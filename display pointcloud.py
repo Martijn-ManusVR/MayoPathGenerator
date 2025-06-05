@@ -19,11 +19,19 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
     rx, ry, rz = orientation
     waypoints = []
 
-    # Adjust phi to avoid degenerate points
-    for i in range(steps + 1):
-        phi = np.pi * ((i + 0.5) / (2 * steps))  # Uniformly distribute phi from 0 to pi/2
-        for j in range(steps * 2 + 1):  # More points around circumference
+    # Distribute points uniformly across the dome surface by spacing
+    # phi using an equal area projection. This avoids clustering
+    # of points near the top of the dome.
+    for i in range(steps):
+        # Generate phi so that the surface area band represented by
+        # each step is approximately equal. The 0.5 offset prevents
+        # points exactly at the pole or equator.
+        phi = np.arccos(1 - (i + 0.5) / steps)
+
+        # Theta is still sampled uniformly around the circumference.
+        for j in range(steps * 2 + 1):
             theta = (2 * np.pi) * (j / (steps * 2))
+
             x = cx + radius * np.sin(phi) * np.cos(theta)
             y = cy + radius * np.sin(phi) * np.sin(theta)
             z = cz + radius * np.cos(phi)
