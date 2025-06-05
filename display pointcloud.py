@@ -29,9 +29,8 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
         phi = np.arccos(1 - (i + 0.5) / steps)
 
         # Theta is still sampled uniformly around the circumference.
-        for j in range(steps * 2 + 1):
+        for j in range(steps * 2 + 1):  # More points around circumference
             theta = (2 * np.pi) * (j / (steps * 2))
-
             x = cx + radius * np.sin(phi) * np.cos(theta)
             y = cy + radius * np.sin(phi) * np.sin(theta)
             z = cz + radius * np.cos(phi)
