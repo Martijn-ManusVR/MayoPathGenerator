@@ -1,6 +1,37 @@
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+from scipy.spatial.transform import Rotation as R
+
+def get_relative_orientations(base_rotvec):
+    """
+    Given a base orientation (as rotation vector), return 6 rotation vectors:
+    - original (facing down)
+    - left  (yaw +90°)
+    - right (yaw -90°)
+    - forward (pitch +90°)
+    - backward (pitch -90°)
+    - back to original
+    """
+    R_base = R.from_rotvec(base_rotvec)
+
+    # Relative rotations in tool frame (local coordinates)
+    relative_rotations = [
+        R.identity(),                                # original
+        #R.from_euler('y',  np.pi/2),                 # left
+        #R.from_euler('y', -np.pi/2),                 # right
+        R.from_euler('x',  np.pi/2),                 # forward
+        R.from_euler('x', -np.pi/2),                 # backward
+        R.identity()                                 # return to original
+    ]
+
+    result_rotvecs = []
+    for rel in relative_rotations:
+        # Apply relative rotation in tool frame: R_final = R_base * R_relative
+        R_result = R_base * rel
+        result_rotvecs.append(R_result.as_rotvec())
+
+    return result_rotvecs
 
 def generate_half_dome_waypoints(center, radius, steps, orientation):
     """
@@ -20,6 +51,7 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
     cx, cy, cz = center
     rx, ry, rz = orientation
     waypoints = []
+    orientations = get_relative_orientations(orientation)
 
     # Distribute points uniformly across the dome surface by spacing
     # phi using an equal area projection. This avoids clustering
@@ -36,7 +68,10 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
             x = cx + radius * np.sin(phi) * np.cos(theta)
             y = cy + radius * np.sin(phi) * np.sin(theta)
             z = cz + radius * np.cos(phi)
-            waypoints.append((x, y, z, rx, ry, rz))
+
+            for rx, ry, rz in orientations:
+                # Append the waypoint with the specified orientation
+                waypoints.append((x, y, z, rx, ry, rz))
 
     # Calculate the top of the dome position
     top_of_dome = (cx, cy, cz + radius)
@@ -45,20 +80,68 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
 
     return waypoints
 
+def visualize_waypoints_with_orientations(waypoints, stride=10, arrow_length=0.01):
+    """
+    Visualize the 3D waypoints with orientation arrows.
+    """
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    from scipy.spatial.transform import Rotation as R
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    xs, ys, zs = zip(*[(x, y, z) for x, y, z, _, _, _ in waypoints])
+    ax.plot(xs, ys, zs, '.', alpha=0.3)
+
+    # Draw tool Z-axis at selected waypoints
+    for i in range(0, len(waypoints), stride):
+        x, y, z, rx, ry, rz = waypoints[i]
+        R_tool = R.from_rotvec([rx, ry, rz])
+        tool_z = R_tool.apply([0, 0, 1])  # Local Z-axis
+
+        ax.quiver(x, y, z,
+                  tool_z[0], tool_z[1], tool_z[2],
+                  length=arrow_length, normalize=True, color='r', linewidth=0.8)
+
+    ax.set_title("3D Waypoints with Tool Orientation Arrows")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 #Home Position: X: -0.170090, Y: -0.350146, Z: 0.108982, Rotation RX: -0.026828, RY: -0.005072, RZ: 1.497419 
 #updated home position: X: -0.029437, Y: -0.295145, Z: 0.155930, Rotation RX: 0.039649, RY: 0.075470, RZ: -1.624816
 # Update the function call to include orientation
-points = generate_half_dome_waypoints(center=(-0.029437, -0.295145, 0.155930), radius=0.05, steps=15, orientation=(0.039674, 0.075407, -1.624840))
+#points = generate_half_dome_waypoints(center=(-0.029437, -0.295145, 0.155930), radius=0.05, steps=15, orientation=(0.039674, 0.075407, -1.624840))
+points = generate_half_dome_waypoints(center=(-0.0, -0.0, 0.0), radius=0.05, steps=15, orientation=(0.039674, 0.075407, -1.624840))
 
-#python printout
-print("[")
-for each in points:
-    print(f"    ({each[0]:.3f}, {each[1]:.3f}, {each[2]:.3f}, {each[3]:.3f}, {each[4]:.3f}, {each[5]:.3f}),")
-print("]")
+# Write waypoints to a C++ header file
+header_file_path = "waypoints.h"
+with open(header_file_path, "w") as header_file:
+    header_file.write("// Generated waypoints header file\n")
+    header_file.write("#ifndef WAYPOINTS_H\n")
+    header_file.write("#define WAYPOINTS_H\n\n")
+    header_file.write("std::vector<urcl::vector6d_t> waypoints = {\n")
+    for each in points:
+        header_file.write(f"    {{{each[0]:.3f}, {each[1]:.3f}, {each[2]:.3f}, {each[3]:.3f}, {each[4]:.3f}, {each[5]:.3f}}},\n")
+    header_file.write("};\n\n")
+    header_file.write("#endif // WAYPOINTS_H\n")
 
-#cpp printout
-for each in points:
-    print(f"{{{each[0]:.3f}, {each[1]:.3f}, {each[2]:.3f}, {each[3]:.3f}, {each[4]:.3f}, {each[5]:.3f}}},")
+print(f"Waypoints have been written to {header_file_path}")
+
+# Write waypoints to a Python file
+python_file_path = "waypoints.py"
+with open(python_file_path, "w") as python_file:
+    python_file.write("# Generated waypoints Python file\n")
+    python_file.write("waypoints = [\n")
+    for each in points:
+        python_file.write(f"    ({each[0]:.3f}, {each[1]:.3f}, {each[2]:.3f}, {each[3]:.3f}, {each[4]:.3f}, {each[5]:.3f}),\n")
+    python_file.write("]\n")
+
+print(f"Waypoints have been written to {python_file_path}")
 
 # Extract x, y, z coordinates from points
 x_coords, y_coords, z_coords = zip(*[(x, y, z) for x, y, z, _, _, _ in points])
@@ -131,3 +214,6 @@ fig.colorbar(scatter, ax=ax4, label="Point Order")
 # Adjust layout and show the plot
 plt.tight_layout()
 plt.show()
+
+visualize_waypoints_with_orientations(points, stride=1, arrow_length=0.01)
+
