@@ -36,6 +36,8 @@ def get_relative_orientations(base_rotvec):
 def generate_half_dome_waypoints(center, radius, steps, orientation):
     """
     Generate 3D waypoints forming a half-dome over a given center point, maintaining orientation.
+    The points are distributed uniformly across the dome surface using an
+    equal-area projection for the inclination angle.
 
     Parameters:
         center (tuple): (x, y, z) coordinates of the dome's base center.
@@ -51,9 +53,16 @@ def generate_half_dome_waypoints(center, radius, steps, orientation):
     waypoints = []
     orientations = get_relative_orientations(orientation)
 
-    # Adjust phi to avoid degenerate points
-    for i in range(steps + 1):
-        phi = np.pi * ((i + 0.5) / (2 * steps))  # Uniformly distribute phi from 0 to pi/2
+    # Distribute points uniformly across the dome surface by spacing
+    # phi using an equal area projection. This avoids clustering
+    # of points near the top of the dome.
+    for i in range(steps):
+        # Generate phi so that the surface area band represented by
+        # each step is approximately equal. The 0.5 offset prevents
+        # points exactly at the pole or equator.
+        phi = np.arccos(1 - (i + 0.5) / steps)
+
+        # Theta is still sampled uniformly around the circumference.
         for j in range(steps * 2 + 1):  # More points around circumference
             theta = (2 * np.pi) * (j / (steps * 2))
             x = cx + radius * np.sin(phi) * np.cos(theta)
@@ -207,3 +216,4 @@ plt.tight_layout()
 plt.show()
 
 visualize_waypoints_with_orientations(points, stride=1, arrow_length=0.01)
+
